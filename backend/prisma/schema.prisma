@@ -1,0 +1,204 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OPERADOR
+  VENDEDOR
+  SUPERVISOR
+  GERENTE
+}
+
+enum TipoSolicitacaoCliente {
+  ATIVACAO_INATIVACAO
+  NOVO_CADASTRO
+  ALTERACAO_SENSIVEL
+  ALTERACAO_NORMAL
+}
+
+enum StatusSolicitacaoCliente {
+  PENDENTE
+  EM_ANALISE
+  CONCLUIDO
+  REJEITADO
+}
+
+enum AcaoAtivacaoCliente {
+  ATIVAR
+  INATIVAR
+}
+
+model User {
+  id                        String                @id @default(cuid())
+  name                      String
+  email                     String                @unique
+  passwordHash              String
+  role                      Role
+  baseId                    String?
+  supervisorId              String?
+  isActive                  Boolean               @default(true)
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+
+  refreshTokens             RefreshToken[]
+  coveringFor               SalesCoverage[]       @relation("CoverageSubstitute")
+  coveredBy                 SalesCoverage[]       @relation("CoverageCovered")
+
+  clientesComoVendedor      Cliente[]             @relation("ClienteVendedor")
+  solicitacoesCriadas       SolicitacaoCliente[]  @relation("SolicitacaoCriadaPor")
+  solicitacoesAnalisadas    SolicitacaoCliente[]  @relation("SolicitacaoAnalisadaPor")
+  solicitacoesAutorizadas   SolicitacaoCliente[]  @relation("SolicitacaoAutorizadaPor")
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String   @id @default(cuid())
+  token      String   @unique
+  userId     String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  revokedAt  DateTime?
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model SalesCoverage {
+  id             String   @id @default(cuid())
+  substituteId   String
+  coveredUserId  String
+  startDate      DateTime
+  endDate        DateTime
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  substitute     User     @relation("CoverageSubstitute", fields: [substituteId], references: [id], onDelete: Cascade)
+  coveredUser    User     @relation("CoverageCovered", fields: [coveredUserId], references: [id], onDelete: Cascade)
+
+  @@index([substituteId])
+  @@index([coveredUserId])
+  @@map("sales_coverages")
+}
+
+model Subcanal {
+  id          String    @id @default(cuid())
+  nome        String    @unique
+  ativo       Boolean   @default(true)
+  criadoEm    DateTime  @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  clientes    Cliente[]
+
+  @@map("subcanais")
+}
+
+model Rota {
+  id           String    @id @default(cuid())
+  nome         String    @unique
+  ativo        Boolean   @default(true)
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+
+  clientes     Cliente[]
+
+  @@map("rotas")
+}
+
+model DiaAtendimento {
+  id           String    @id @default(cuid())
+  nome         String    @unique
+  ativo        Boolean   @default(true)
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+
+  clientes     Cliente[]
+
+  @@map("dias_atendimento")
+}
+
+model Cliente {
+  id                    String                @id @default(cuid())
+  codigoCliente         String?               @unique
+  cnpj                  String                @unique
+  razaoSocial           String
+  nomeFantasia          String
+  subcanalId            String
+  rotaId                String
+  sequencia             Int
+  diaAtendimentoId      String
+  horarioFuncionamento  String
+  nomeContato           String
+  telefoneWhatsapp      String
+  limiteCredito         Decimal               @db.Decimal(12, 2)
+  diasPrazo             Int
+  bloqueioFinanceiro    Boolean               @default(false)
+  fotoInternaUrl        String?
+  fotoExternaUrl        String?
+  vendedorId            String
+  baseId                String
+  ativo                 Boolean               @default(true)
+  criadoEm              DateTime              @default(now())
+  atualizadoEm          DateTime              @updatedAt
+
+  subcanal              Subcanal              @relation(fields: [subcanalId], references: [id])
+  rota                  Rota                  @relation(fields: [rotaId], references: [id])
+  diaAtendimento        DiaAtendimento        @relation(fields: [diaAtendimentoId], references: [id])
+  vendedor              User                  @relation("ClienteVendedor", fields: [vendedorId], references: [id])
+
+  solicitacoes          SolicitacaoCliente[]
+
+  @@index([vendedorId])
+  @@index([baseId])
+  @@index([subcanalId])
+  @@index([rotaId])
+  @@index([diaAtendimentoId])
+  @@map("clientes")
+}
+
+model SolicitacaoCliente {
+  id                      String                   @id @default(cuid())
+  tipoSolicitacao         TipoSolicitacaoCliente
+  status                  StatusSolicitacaoCliente @default(PENDENTE)
+
+  clienteId               String?
+  solicitadoPorId         String
+  solicitadoPorPerfil     Role
+
+  operadorResponsavelId   String?
+  autorizadoPorGerenteId  String?
+  autorizacaoGerente      Boolean                  @default(false)
+  atualizacao             Boolean                  @default(false)
+
+  acaoAtivacao            AcaoAtivacaoCliente?
+  motivo                  String?
+  observacaoSolicitacao   String?
+  observacaoOperador      String?
+
+  dadosSolicitados        Json
+
+  criadoEm                DateTime                 @default(now())
+  atualizadoEm            DateTime                 @updatedAt
+  concluidoEm             DateTime?
+
+  cliente                 Cliente?                 @relation(fields: [clienteId], references: [id])
+  solicitadoPor           User                     @relation("SolicitacaoCriadaPor", fields: [solicitadoPorId], references: [id])
+  operadorResponsavel     User?                    @relation("SolicitacaoAnalisadaPor", fields: [operadorResponsavelId], references: [id])
+  autorizadoPorGerente    User?                    @relation("SolicitacaoAutorizadaPor", fields: [autorizadoPorGerenteId], references: [id])
+
+  @@index([clienteId])
+  @@index([solicitadoPorId])
+  @@index([operadorResponsavelId])
+  @@index([autorizadoPorGerenteId])
+  @@index([status])
+  @@index([tipoSolicitacao])
+  @@map("solicitacoes_clientes")
+}
